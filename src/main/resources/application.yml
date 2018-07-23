@@ -1,0 +1,11 @@
+spring:
+  main:
+    banner-mode: 'off'
+
+# Define a custom port instead of the default 8080
+server:
+  port: 8088
+
+app:
+  storagePath: C:/Dev/storage
+  maxCheckFilesByThread: 10

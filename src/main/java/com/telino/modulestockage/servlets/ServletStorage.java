@@ -13,6 +13,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -21,16 +22,16 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.telino.modulestockage.dto.DocumentBean;
-import com.telino.modulestockage.protocol.AvpProtocol.FileReturnError;
-import com.telino.modulestockage.protocol.AvpProtocol.ReturnCode;
+import com.telino.avp.dto.DocumentDto;
+import com.telino.avp.protocol.AvpProtocol.FileReturnError;
+import com.telino.avp.protocol.AvpProtocol.ReturnCode;
 import com.telino.modulestockage.service.StorageAction;
-import com.telino.modulestockage.util.ConfigFile;
 
 /**
  * Servlet servi comme point d'entrée et dispatcher pour toutes commandes
@@ -52,9 +53,8 @@ public class ServletStorage {
 	// configuration.
 	// S'il n'est pas trouvé, une valeur "home/tomcate/storage" par défaut est
 	// utilisée.
-	private static final String RACINE = (null != ConfigFile.PROPERTIES.get("StoragePath")
-			? ConfigFile.PROPERTIES.get("StoragePath")
-			: "home/tomcate/storage");
+	@Value("${app.storagePath:home/tomcate/storage}")
+	private String RACINE;
 	private static final String SEPTOR = "/";
 
 	@PostMapping("/StorageService")
@@ -236,13 +236,13 @@ public class ServletStorage {
 
 					// Récupérer liste de document depuis json String
 					ObjectMapper jsonMapper = new ObjectMapper();
-					List<DocumentBean> documents = Arrays
-							.asList(jsonMapper.readValue(trame.get("documents").toString(), DocumentBean[].class));
+					List<DocumentDto> documents = Arrays
+							.asList(jsonMapper.readValue(trame.get("documents").toString(), DocumentDto[].class));
 
 					storageAction = new StorageAction(RACINE + SEPTOR + (String) trame.get("idstorage"));
 					try {
 						// Eventuellement une liste de documents en problème et la raison
-						Map<Long, FileReturnError> badDocs = new HashMap<>();
+						Map<UUID, FileReturnError> badDocs = new HashMap<>();
 
 						// contrôle l'intégralité des documents
 						if (storageAction.checkFiles(documents, badDocs)) {

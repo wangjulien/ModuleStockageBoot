@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -25,13 +26,13 @@ import java.util.concurrent.TimeoutException;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 
-import com.telino.modulestockage.dto.DocumentBean;
-import com.telino.modulestockage.protocol.AvpProtocol.FileReturnError;
-import com.telino.modulestockage.util.AesCipher;
-import com.telino.modulestockage.util.AesCipherException;
-import com.telino.modulestockage.util.ConfigFile;
-import com.telino.modulestockage.util.Sha;
+import com.telino.avp.dto.DocumentDto;
+import com.telino.avp.protocol.AvpProtocol.FileReturnError;
+import com.telino.avp.utils.AesCipher;
+import com.telino.avp.utils.AesCipherException;
+import com.telino.avp.utils.Sha;
 
 /**
  * Classe d'actions - excuter toutes les commandes dispatchées par
@@ -45,15 +46,15 @@ public class StorageAction {
 	private static final Logger LOGGER = LoggerFactory.getLogger(StorageAction.class);
 
 	private static final String SEPTOR = "/";
-	private static final int MAX_CHECK_FILES_BY_THREAD = (null != ConfigFile.PROPERTIES.get("MaxCheckFilesByThread")
-			? Integer.valueOf(ConfigFile.PROPERTIES.get("MaxCheckFilesByThread"))
-			: 100); // Default files package per thread
-	private static final long CHECK_FILES_TASK_TIMEOUT = (null != ConfigFile.PROPERTIES.get("CheckFilesTaskTimeout")
-			? Long.valueOf(ConfigFile.PROPERTIES.get("CheckFilesTaskTimeout"))
-			: 60L); // Default timeout value 60 minutes 
-	private static final int MAX_CHECK_FILES_THREAD = (null != ConfigFile.PROPERTIES.get("MaxCheckFilesThread")
-			? Integer.valueOf(ConfigFile.PROPERTIES.get("MaxCheckFilesThread"))
-			: 5);
+	
+	@Value("${app.maxCheckFilesByThread:10}")
+	private int maxCheckFilesByThread;
+	
+	@Value("${app.checkFilesTaskTimeout:60}")
+	private long checkFilesTaskTimeout;
+	
+	@Value("${app.maxCheckFilesThread:5}")
+	private int maxCheckFilesThread;
 	
 	
 	private String idStorage;
@@ -208,11 +209,11 @@ public class StorageAction {
 	 *         bon
 	 * @throws Exception
 	 */
-	public boolean checkFiles(List<DocumentBean> documents, Map<Long, FileReturnError> badDocs) {
+	public boolean checkFiles(List<DocumentDto> documents, Map<UUID, FileReturnError> badDocs) {
 
 		
 		
-		final int nbThread = Math.min(documents.size()/MAX_CHECK_FILES_BY_THREAD + 1, MAX_CHECK_FILES_THREAD);
+		final int nbThread = Math.min(documents.size()/maxCheckFilesByThread + 1, maxCheckFilesThread);
 		int offset = 0;
 		
 		ExecutorService executor = Executors.newFixedThreadPool(nbThread);
@@ -222,14 +223,14 @@ public class StorageAction {
 			
 			// Get offset view of document liste
 			
-			final int toIndex = (offset+MAX_CHECK_FILES_BY_THREAD > documents.size()) ? 
-					documents.size() : offset+MAX_CHECK_FILES_BY_THREAD;
-			List<DocumentBean> offsetList = documents.subList(offset, toIndex);
+			final int toIndex = (offset+maxCheckFilesByThread > documents.size()) ? 
+					documents.size() : offset+maxCheckFilesByThread;
+			List<DocumentDto> offsetList = documents.subList(offset, toIndex);
 			
 			// Callable funtion
 			Callable<Boolean> call = () -> {
 				boolean allCheckOk = true;
-				for (DocumentBean c : offsetList) {
+				for (DocumentDto c : offsetList) {
 
 					// Récupérer le contenu crypté du document
 					byte[] content;
@@ -298,7 +299,7 @@ public class StorageAction {
 			tasks.add(call);
 			LOGGER.debug("Starting of a sub thread for docs \n {} ", offsetList);
 			
-			offset += MAX_CHECK_FILES_BY_THREAD;
+			offset += maxCheckFilesByThread;
 			
 		}
 		
@@ -306,7 +307,7 @@ public class StorageAction {
 
 		try {
 			for (Future<Boolean> result : executor.invokeAll(tasks)) {
-				if ( !result.get(CHECK_FILES_TASK_TIMEOUT, TimeUnit.MINUTES) ) {
+				if ( !result.get(checkFilesTaskTimeout, TimeUnit.MINUTES) ) {
 					// Si traitement a eu probleme
 					LOGGER.error("Controler de l'intégralité des archives n'est pas tout reussi sur un sub Thread ");
 					allThreadOk = false;
