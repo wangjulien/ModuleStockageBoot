@@ -27,12 +27,14 @@ import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
 import com.telino.avp.dto.DocumentDto;
 import com.telino.avp.protocol.AvpProtocol.FileReturnError;
 import com.telino.avp.utils.AesCipher;
 import com.telino.avp.utils.AesCipherException;
 import com.telino.avp.utils.Sha;
+import com.telino.modulestockage.servlets.ServletStorage;
 
 /**
  * Classe d'actions - excuter toutes les commandes dispatchées par
@@ -41,27 +43,23 @@ import com.telino.avp.utils.Sha;
  * @author
  *
  */
+
+@Service
 public class StorageAction {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(StorageAction.class);
 
-	private static final String SEPTOR = "/";
-	
 	@Value("${app.maxCheckFilesByThread:10}")
 	private int maxCheckFilesByThread;
-	
+
 	@Value("${app.checkFilesTaskTimeout:60}")
 	private long checkFilesTaskTimeout;
-	
+
 	@Value("${app.maxCheckFilesThread:5}")
 	private int maxCheckFilesThread;
-	
-	
-	private String idStorage;
 
-	public StorageAction(String idStorage) {
+	public StorageAction() {
 		super();
-		this.idStorage = idStorage;
 	}
 
 	/**
@@ -70,9 +68,8 @@ public class StorageAction {
 	 * @param idStrorage
 	 * @return
 	 */
-	public boolean existStorage(String idStrorage) {
-		String dirName = idStorage;
-		if (!(new File(dirName)).isDirectory()) {
+	public boolean existStorage(final String idStorage) {
+		if (!(new File(idStorage)).isDirectory()) {
 			return false;
 		} else {
 			return true;
@@ -88,10 +85,10 @@ public class StorageAction {
 	 *            le contenu du fichier
 	 * @throws Exception
 	 */
-	public void writeFile(String sha1Unique, byte[] content) throws Exception {
+	public void writeFile(final String idStorage, final String sha1Unique, final byte[] content) throws Exception {
 		Boolean dirExist = true;
 
-		String dirName = idStorage + SEPTOR + sha1Unique.substring(0, 2);
+		String dirName = idStorage + ServletStorage.SEPTOR + sha1Unique.substring(0, 2);
 		String fileName = sha1Unique.substring(2);
 
 		if (!(new File(dirName)).isDirectory()) {
@@ -99,7 +96,7 @@ public class StorageAction {
 			dirExist = (new File(dirName)).mkdirs();
 		}
 		if (dirExist) {
-			FileUtils.writeByteArrayToFile(new File(dirName + SEPTOR + fileName), content);
+			FileUtils.writeByteArrayToFile(new File(dirName + ServletStorage.SEPTOR + fileName), content);
 		} else {
 			LOGGER.error("Directory missing ({})", dirName);
 			throw new Exception("Directory missing (" + dirName + ")");
@@ -114,12 +111,12 @@ public class StorageAction {
 	 * @return true si le fichier a été supprimé, false sinon
 	 * @throws IOException
 	 */
-	public boolean deleteFile(String sha1Unique) throws IOException {
+	public boolean deleteFile(final String idStorage, final String sha1Unique) throws IOException {
 
-		String dirName = idStorage + SEPTOR + sha1Unique.substring(0, 2);
+		String dirName = idStorage + ServletStorage.SEPTOR + sha1Unique.substring(0, 2);
 		String fileName = sha1Unique.substring(2);
 
-		File file = new File(dirName + SEPTOR + fileName);
+		File file = new File(dirName + ServletStorage.SEPTOR + fileName);
 		if (file.exists()) {
 			boolean result = false;
 			RandomAccessFile raf = null;
@@ -183,13 +180,13 @@ public class StorageAction {
 	 * @return le contenu du fichier en bytes
 	 * @throws Exception
 	 */
-	public byte[] getFile(String sha1Unique) throws Exception {
-		String dirName = idStorage + SEPTOR + sha1Unique.substring(0, 2);
+	public byte[] getFile(final String idStorage, final String sha1Unique) throws Exception {
+		String dirName = idStorage + ServletStorage.SEPTOR + sha1Unique.substring(0, 2);
 		String fileName = sha1Unique.substring(2);
 
 		LOGGER.debug("Récupérer fichier : {}", sha1Unique);
 
-		File file = new File(dirName + SEPTOR + fileName);
+		File file = new File(dirName + ServletStorage.SEPTOR + fileName);
 		if (file.exists()) {
 			byte[] content = FileUtils.readFileToByteArray(file);
 			return content;
@@ -209,24 +206,23 @@ public class StorageAction {
 	 *         bon
 	 * @throws Exception
 	 */
-	public boolean checkFiles(List<DocumentDto> documents, Map<UUID, FileReturnError> badDocs) {
+	public boolean checkFiles(final String idStorage, final List<DocumentDto> documents,
+			final Map<UUID, FileReturnError> badDocs) {
 
-		
-		
-		final int nbThread = Math.min(documents.size()/maxCheckFilesByThread + 1, maxCheckFilesThread);
+		final int nbThread = Math.min(documents.size() / maxCheckFilesByThread + 1, maxCheckFilesThread);
 		int offset = 0;
-		
+
 		ExecutorService executor = Executors.newFixedThreadPool(nbThread);
 		List<Callable<Boolean>> tasks = new ArrayList<>();
-		
-		while ( offset < documents.size() ) {
-			
+
+		while (offset < documents.size()) {
+
 			// Get offset view of document liste
-			
-			final int toIndex = (offset+maxCheckFilesByThread > documents.size()) ? 
-					documents.size() : offset+maxCheckFilesByThread;
+
+			final int toIndex = (offset + maxCheckFilesByThread > documents.size()) ? documents.size()
+					: offset + maxCheckFilesByThread;
 			List<DocumentDto> offsetList = documents.subList(offset, toIndex);
-			
+
 			// Callable funtion
 			Callable<Boolean> call = () -> {
 				boolean allCheckOk = true;
@@ -235,13 +231,13 @@ public class StorageAction {
 					// Récupérer le contenu crypté du document
 					byte[] content;
 					try {
-						content = getFile(c.getEmpreinteUnique());
+						content = getFile(idStorage, c.getEmpreinteUnique());
 					} catch (Exception e) {
 						allCheckOk = false;
-						
+
 						// Noter l'archive en problème et la cause. Continuer avec la prochaine
 						badDocs.put(c.getDocid(), FileReturnError.NOT_FOUND_ERROR);
-						
+
 						// Logger du document en problème ; si le contrôle de l'intégralité n'est pas !
 						LOGGER.error("Fichier {} introuvable ", c.getTitle() + " ID=" + c.getDocid());
 						continue;
@@ -253,10 +249,10 @@ public class StorageAction {
 							content = AesCipher.decrypt(c.getSecretKey(), c.getInitVector(), content);
 						} catch (AesCipherException e) {
 							allCheckOk = false;
-							
+
 							// Noter l'archive en problème et la cause. Continuer avec la prochaine
 							badDocs.put(c.getDocid(), FileReturnError.DECRYPT_ERROR);
-							
+
 							// Logger du document en problème ; si le contrôle de l'intégralité n'est pas !
 							LOGGER.error("Décryptage du fichier {} échoué ", c.getTitle() + " ID=" + c.getDocid());
 							continue;
@@ -267,13 +263,14 @@ public class StorageAction {
 					String printCalculated = null;
 					try {
 						printCalculated = Sha.encode(
-								c.getTitle() + c.getArchiveDateMs() + Base64.getEncoder().encodeToString(content), "utf-8");
+								c.getTitle() + c.getArchiveDateMs() + Base64.getEncoder().encodeToString(content),
+								"utf-8");
 					} catch (NoSuchAlgorithmException | UnsupportedEncodingException e) {
 						allCheckOk = false;
-						
+
 						// Noter l'archive en problème et la cause. Continuer avec la prochaine
 						badDocs.put(c.getDocid(), FileReturnError.SHA_HASH_ERROR);
-						
+
 						// Logger du document en problème ; si le contrôle de l'intégralité n'est pas !
 						LOGGER.error("Hachage du fichier {} échoué ", c.getTitle() + " ID=" + c.getDocid());
 						continue;
@@ -288,26 +285,27 @@ public class StorageAction {
 						badDocs.put(c.getDocid(), FileReturnError.ENTIRETY_ERROR);
 
 						// Logger du document en problème ; si le contrôle de l'intégralité n'est pas !
-						LOGGER.error("Contrôle l'intégralité du fichier {} échoué ", c.getTitle() + " ID=" + c.getDocid());
+						LOGGER.error("Contrôle l'intégralité du fichier {} échoué ",
+								c.getTitle() + " ID=" + c.getDocid());
 					}
 				}
-				
+
 				return allCheckOk;
 			};
 
 			// Liste de task a excuter
 			tasks.add(call);
 			LOGGER.debug("Starting of a sub thread for docs \n {} ", offsetList);
-			
+
 			offset += maxCheckFilesByThread;
-			
+
 		}
-		
+
 		boolean allThreadOk = true;
 
 		try {
 			for (Future<Boolean> result : executor.invokeAll(tasks)) {
-				if ( !result.get(checkFilesTaskTimeout, TimeUnit.MINUTES) ) {
+				if (!result.get(checkFilesTaskTimeout, TimeUnit.MINUTES)) {
 					// Si traitement a eu probleme
 					LOGGER.error("Controler de l'intégralité des archives n'est pas tout reussi sur un sub Thread ");
 					allThreadOk = false;

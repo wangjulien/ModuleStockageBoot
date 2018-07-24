@@ -13,15 +13,16 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.json.JSONException;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.telino.avp.dto.DocumentDto;
+import com.telino.avp.protocol.AvpProtocol.Commande;
 import com.telino.avp.protocol.AvpProtocol.FileReturnError;
 import com.telino.avp.protocol.AvpProtocol.ReturnCode;
 import com.telino.modulestockage.service.StorageAction;
@@ -44,10 +46,9 @@ import com.telino.modulestockage.service.StorageAction;
 @Controller
 @RequestMapping("/modulestockage")
 public class ServletStorage {
-
 	private static final Logger LOGGER = LoggerFactory.getLogger(ServletStorage.class);
 
-	private SecureRandom random = new SecureRandom();
+	public static final String SEPTOR = "/";
 
 	// Le chemin d'acces pour <storage> est chargé depuis un fichier de
 	// configuration.
@@ -55,36 +56,38 @@ public class ServletStorage {
 	// utilisée.
 	@Value("${app.storagePath:home/tomcate/storage}")
 	private String RACINE;
-	private static final String SEPTOR = "/";
+
+	@Autowired
+	private StorageAction storageAction;
 
 	@PostMapping("/StorageService")
 	public void doPost(HttpServletRequest req, HttpServletResponse resp) {
 		try {
+			// Return information
 			JSONObject result = new JSONObject();
-			Object message = "";
 			ReturnCode codeRetour = ReturnCode.KO;
-			StorageAction storageAction;
-			String empreinte;
-			byte[] content = new byte[0];
+			String message = "";
 
-			JSONObject trame = null;
+			// Input information
 			Object inputStream = lecture(req);
-			trame = new JSONObject(inputStream.toString());
+			JSONObject trame = new JSONObject(inputStream.toString());
+			String empreinte = null;
 
 			LOGGER.debug(trame.toString());
-
 			LOGGER.debug(RACINE);
 
-			String commande = trame.get("command").toString();
-
-			if (commande == null) {
+			// Exploit the command
+			String commandeStr = (String) trame.get("command");
+			if (Objects.isNull(commandeStr)) {
 				message = "action demandée inconnue";
 			} else {
+
+				Commande commande = Commande.getEnum(commandeStr);
 
 				switch (commande) {
 
 				// initialise une unité de stockage
-				case "initstorageunit":
+				case INIT_STORAGE_UNIT:
 					LOGGER.info("demande d'initialisation d'une unité de stockage (command=initstorageunit)");
 
 					if (trame.get("idstorage") == null || trame.get("idstorage") == "") {
@@ -92,41 +95,42 @@ public class ServletStorage {
 						break;
 					}
 
-					File dir = new File(RACINE + SEPTOR + trame.get("idstorage"));
 					try {
+						File dir = new File(RACINE + SEPTOR + trame.get("idstorage"));
 						dir.mkdirs();
 						codeRetour = ReturnCode.OK;
 					} catch (SecurityException se) {
 						LOGGER.error("ServletStorage - Erreur creation unitstorage : {}", se.getMessage());
-						message = se;
+						message = se.getMessage();
 					}
 
 					break;
 
-				case "createstorageunit":
+				case CREATE_STORAGE_UNIT:
 					LOGGER.info("demande de création d'une unité de stockage (command=createstorageunit)");
 
-					String idStorage = new BigInteger(130, random).toString(32);
-					while ((new File(idStorage)).isDirectory()) {
-						idStorage = new BigInteger(130, random).toString(32);
-					}
-					LOGGER.debug("ServletStorage - idStorage : {} ", idStorage);
-
-					File directory = new File(RACINE + SEPTOR + idStorage);
-
+					SecureRandom random = new SecureRandom();
 					try {
+						String idStorage = new BigInteger(130, random).toString(32);
+						while ((new File(idStorage)).isDirectory()) {
+							idStorage = new BigInteger(130, random).toString(32);
+						}
+						LOGGER.debug("ServletStorage - idStorage : {} ", idStorage);
+
+						File directory = new File(RACINE + SEPTOR + idStorage);
+
 						directory.mkdirs();
 						codeRetour = ReturnCode.OK;
 						message = idStorage;
 					} catch (SecurityException se) {
 						LOGGER.error("ServletStorage - Erreur creation unitstorage : {} ", se.getMessage());
-						message = se;
+						message = se.getMessage();
 					}
 
 					break;
 
 				// archivage d'un fichier
-				case "archive":
+				case ARCHIVE:
 					LOGGER.info("demande d'archivage (command=archive)");
 
 					if (trame.get("idstorage") == null || trame.get("idstorage") == "") {
@@ -144,24 +148,25 @@ public class ServletStorage {
 						break;
 					}
 
-					storageAction = new StorageAction(RACINE + SEPTOR + (String) trame.get("idstorage"));
-					String contentBase64 = (String) trame.get("content");
-					content = Base64.getDecoder().decode(contentBase64);
-					empreinte = (String) trame.get("empreinte").toString();
-
+					// storageAction = new StorageAction());
 					try {
-						storageAction.writeFile(empreinte, content);
+						String contentBase64 = (String) trame.get("content");
+						byte[] content = Base64.getDecoder().decode(contentBase64);
+						empreinte = (String) trame.get("empreinte").toString();
+						String idStorage = RACINE + SEPTOR + (String) trame.get("idstorage");
+
+						storageAction.writeFile(idStorage, empreinte, content);
 						codeRetour = ReturnCode.OK;
 					} catch (Exception e) {
 						LOGGER.error("ServletStorage - Erreur d'écriture du fichier (" + empreinte + ") : "
 								+ e.getMessage());
-						message = e;
+						message = e.getMessage();
 					}
 
 					break;
 
 				// recupération du contenu d'un fichier
-				case "get":
+				case GET_DOC:
 					LOGGER.info("demande de recupération d'archive (command=get)");
 
 					if (trame.get("idstorage") == null || trame.get("idstorage") == "") {
@@ -174,22 +179,23 @@ public class ServletStorage {
 						break;
 					}
 
-					storageAction = new StorageAction(RACINE + SEPTOR + (String) trame.get("idstorage"));
-					empreinte = (String) trame.get("empreinte").toString();
-
 					try {
-						content = storageAction.getFile(empreinte);
-						String base64content = new String(Base64.getEncoder().encode(content), "UTF-8");
+						empreinte = (String) trame.get("empreinte").toString();
+						String idStorage = RACINE + SEPTOR + (String) trame.get("idstorage");
+
+						byte[] content = storageAction.getFile(idStorage, empreinte);
+
+						String base64content = Base64.getEncoder().encodeToString(content);
 						result.put("content", base64content);
 						codeRetour = ReturnCode.OK;
 					} catch (Exception e) {
-						message = e;
+						message = e.toString();
 					}
 
 					break;
 
 				// suppression d'un fichier
-				case "delete":
+				case DELETE:
 					LOGGER.info("demande de suppression d'archive (command=delete)");
 
 					if (trame.get("idstorage") == null || trame.get("idstorage") == "") {
@@ -202,11 +208,14 @@ public class ServletStorage {
 						break;
 					}
 
-					storageAction = new StorageAction(RACINE + SEPTOR + (String) trame.get("idstorage"));
-					empreinte = (String) trame.get("empreinte").toString();
+					// storageAction = new StorageAction(RACINE + SEPTOR + (String)
+					// trame.get("idstorage"));
 
 					try {
-						if (storageAction.deleteFile(empreinte)) {
+						empreinte = (String) trame.get("empreinte").toString();
+						String idStorage = RACINE + SEPTOR + (String) trame.get("idstorage");
+
+						if (storageAction.deleteFile(idStorage, empreinte)) {
 							codeRetour = ReturnCode.OK;
 						} else {
 							message = "Impossible de supprimer le fichier";
@@ -221,7 +230,7 @@ public class ServletStorage {
 				// break;
 
 				// Check list of documents
-				case "checkfiles":
+				case CHECK_FILES:
 					LOGGER.info("demande de contrôle d'intégralité d'une liste d'archive (command=checkfiles)");
 
 					if (trame.get("idstorage") == null || trame.get("idstorage") == "") {
@@ -239,15 +248,15 @@ public class ServletStorage {
 					List<DocumentDto> documents = Arrays
 							.asList(jsonMapper.readValue(trame.get("documents").toString(), DocumentDto[].class));
 
-					storageAction = new StorageAction(RACINE + SEPTOR + (String) trame.get("idstorage"));
 					try {
 						// Eventuellement une liste de documents en problème et la raison
 						Map<UUID, FileReturnError> badDocs = new HashMap<>();
+						String idStorage = RACINE + SEPTOR + (String) trame.get("idstorage");
 
 						// contrôle l'intégralité des documents
-						if (storageAction.checkFiles(documents, badDocs)) {
+						if (storageAction.checkFiles(idStorage, documents, badDocs)) {
 							codeRetour = ReturnCode.OK;
-							
+
 							LOGGER.info("contrôle d'intégralité d'une liste d'archive reussi");
 						} else {
 							// la liste de docId dont le contrôle n'est pas validée
@@ -256,7 +265,7 @@ public class ServletStorage {
 						}
 
 					} catch (Exception e) {
-						message = e;
+						message = e.getMessage();
 					}
 
 					break;
@@ -270,16 +279,12 @@ public class ServletStorage {
 			result.put("codeRetour", codeRetour.toString());
 			result.put("message", message);
 
-			
 			ecriture(resp, result.toString());
 
-		} catch (JSONException |
-
-				IOException e) {
+		} catch (Exception e) {
 			LOGGER.error(e.getMessage());
-			e.printStackTrace();
 
-			ecriture(resp, e.getMessage().toString());
+			ecriture(resp, e.getMessage());
 
 		}
 	}
@@ -299,11 +304,11 @@ public class ServletStorage {
 		}
 		return trame;
 	}
-	
+
 	private static void ecriture(HttpServletResponse response, String result) {
 		response.setContentType("application/json");
 		response.setCharacterEncoding("UTF-8");
-		
+
 		try (OutputStream outstr = response.getOutputStream();
 				ObjectOutputStream oos = new ObjectOutputStream(outstr);) {
 
