@@ -44,7 +44,7 @@ import com.telino.modulestockage.service.StorageAction;
  */
 
 @Controller
-@RequestMapping("/modulestockage")
+@RequestMapping("/StorageService")
 public class ServletStorage {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ServletStorage.class);
 
@@ -60,7 +60,7 @@ public class ServletStorage {
 	@Autowired
 	private StorageAction storageAction;
 
-	@PostMapping("/StorageService")
+	@PostMapping
 	public void doPost(HttpServletRequest req, HttpServletResponse resp) {
 		try {
 			// Return information
