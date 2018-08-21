@@ -3,7 +3,7 @@
 <configuration scan="true" scanPeriod="30 seconds">
 	
 	<springProperty scope="context" name="LOG_HOME" source="server.tomcat.basedir"/>
-	<property name="LOG_NAME" value="module_storage" />
+	<property name="LOG_NAME" value="module_storage_boot" />
 
 	<appender name="console" class="ch.qos.logback.core.ConsoleAppender">
 		<encoder>

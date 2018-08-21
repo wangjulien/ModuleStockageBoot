@@ -1,17 +1,17 @@
 # Define a custom port instead of the default 8080
 server:
-  port: 8088
+  port: 8091
   servlet:
     contextPath: /modulestockage
   tomcat:
     accesslog:
       enabled: true
-    basedir: /home/tomcat/tomcat
+    basedir: /home/tomcat/avp_spring
 
 spring:
   main:
     banner-mode: 'off'
 
 app:
-  storagePath: C:/Dev/storage
+  storagePath: /home/tomcat/storage
   maxCheckFilesByThread: 10
