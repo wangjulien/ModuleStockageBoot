@@ -3,12 +3,12 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-	<groupId>com.example</groupId>
-	<artifactId>modulestockage_boot</artifactId>
+	<groupId>com.telino</groupId>
+	<artifactId>ModuleStockageBoot</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<packaging>jar</packaging>
 
-	<name>modulestockage_boot</name>
+	<name>ModuleStockageBoot</name>
 	<description>Module Stockage with Spring Boot</description>
 
 	<parent>
